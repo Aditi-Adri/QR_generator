@@ -1,0 +1,2244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Code Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0a0a0f;
+      --surface: #13131a;
+      --surface2:#1c1c27;
+      --border:  rgba(255,255,255,0.07);
+      --accent:  #7c3aed;
+      --accent2: #a855f7;
+      --accent3: #ec4899;
+      --glow:    rgba(124,58,237,0.35);
+      --text:    #f1f0ff;
+      --muted:   #6b7280;
+      --success: #10b981;
+      --body-gradients:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(124,58,237,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(236,72,153,0.13) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 60% at 60% 30%, rgba(168,85,247,0.08) 0%, transparent 50%);
+    }
+
+    /* ── Light Mode ── */
+    html[data-mode="light"] {
+      --bg:      #f3f3f8;
+      --surface: #ffffff;
+      --surface2:#eaeaf4;
+      --border:  rgba(0,0,0,0.09);
+      --text:    #1a1826;
+      --muted:   #6b7280;
+      --body-gradients:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(124,58,237,0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(236,72,153,0.05) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 60% at 60% 30%, rgba(168,85,247,0.04) 0%, transparent 50%);
+    }
+    html[data-mode="light"] .main-input::placeholder { color: #9ca3af; }
+    html[data-mode="light"] .history-date { color: #9ca3af; }
+    html[data-mode="light"] ::-webkit-scrollbar-track { background: #e8e8f0; }
+    html[data-mode="light"] ::-webkit-scrollbar-thumb { background: #c4c4d6; }
+
+    /* ── Accent: Blue ── */
+    html[data-accent="blue"] {
+      --accent:  #1d4ed8;
+      --accent2: #3b82f6;
+      --accent3: #06b6d4;
+      --glow:    rgba(29,78,216,0.35);
+    }
+    /* ── Accent: Green ── */
+    html[data-accent="green"] {
+      --accent:  #047857;
+      --accent2: #10b981;
+      --accent3: #34d399;
+      --glow:    rgba(4,120,87,0.35);
+    }
+    /* ── Accent: Orange ── */
+    html[data-accent="orange"] {
+      --accent:  #b45309;
+      --accent2: #f59e0b;
+      --accent3: #f97316;
+      --glow:    rgba(180,83,9,0.35);
+    }
+    /* ── Accent: Rose ── */
+    html[data-accent="rose"] {
+      --accent:  #be123c;
+      --accent2: #f43f5e;
+      --accent3: #fb7185;
+      --glow:    rgba(190,18,60,0.35);
+    }
+    /* ── Accent: Teal ── */
+    html[data-accent="teal"] {
+      --accent:  #0f766e;
+      --accent2: #14b8a6;
+      --accent3: #22d3ee;
+      --glow:    rgba(15,118,110,0.35);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      transition: background 0.35s, color 0.35s;
+    }
+    .card, .result-card, .profile-bar, .modal,
+    .history-item, .qr-frame, .toast, .main-input,
+    .option-group select, .option-group input[type="color"],
+    .btn-ghost, .btn-icon, .form-group input {
+      transition: background-color 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s !important;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: var(--body-gradients);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.4s;
+    }
+
+    .wrapper {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+
+    /* ── Profile Bar ── */
+    .profile-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 16px 24px;
+      margin-bottom: 32px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 40px rgba(0,0,0,0.4);
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .profile-left { display: flex; align-items: center; gap: 16px; }
+
+    .avatar-wrap  { position: relative; cursor: pointer; flex-shrink: 0; }
+
+    .avatar {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2.5px solid transparent;
+      background: linear-gradient(var(--surface), var(--surface)) padding-box,
+                  linear-gradient(135deg, var(--accent), var(--accent3)) border-box;
+      display: block;
+    }
+
+    .avatar-placeholder {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+
+    .avatar-edit-btn {
+      position: absolute; bottom: -2px; right: -2px;
+      width: 20px; height: 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; color: #fff; cursor: pointer;
+      border: 2px solid var(--bg);
+      transition: transform 0.2s;
+    }
+    .avatar-edit-btn:hover { transform: scale(1.15); }
+
+    .profile-info h2 { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.2; }
+    .profile-info span { font-size: 12px; color: var(--muted); }
+
+    .btn-logout {
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: #ef4444;
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-logout:hover { background: rgba(239,68,68,0.2); border-color: #ef4444; }
+    .btn-logout:active { transform: scale(0.97); }
+
+    .btn-ghost {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-ghost:hover { background: rgba(124,58,237,0.2); border-color: var(--accent); }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      backdrop-filter: blur(6px);
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      width: 100%; max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      animation: slideUp 0.25s ease;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    .modal h3 {
+      font-size: 20px; font-weight: 700; margin-bottom: 24px;
+      background: linear-gradient(90deg, var(--accent2), var(--accent3));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+    .form-group input[type="text"], .form-group input[type="url"] {
+      width: 100%;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 11px 14px; border-radius: 10px;
+      font-size: 14px; outline: none; transition: border-color 0.2s; font-family: inherit;
+    }
+    .form-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+
+    .avatar-preview-wrap {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
+    }
+    #modalAvatarImg {
+      width: 64px; height: 64px; border-radius: 50%;
+      object-fit: cover; flex-shrink: 0;
+    }
+    #modalAvatarInitial {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+
+    .modal-actions { display: flex; gap: 10px; margin-top: 24px; }
+    .btn-cancel { flex: 1; }
+    .btn-save {
+      flex: 2;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      border: none; color: #fff; padding: 11px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn-save:hover { opacity: 0.9; }
+    .btn-save:active { transform: scale(0.98); }
+
+    /* ── Hero ── */
+    .hero { text-align: center; margin-bottom: 36px; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(124,58,237,0.15);
+      border: 1px solid rgba(124,58,237,0.35);
+      color: var(--accent2);
+      padding: 5px 14px; border-radius: 99px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 14px;
+    }
+    .hero h1 {
+      font-size: clamp(30px, 6vw, 48px); font-weight: 900; line-height: 1.1;
+      background: linear-gradient(135deg, #fff 30%, var(--accent2) 60%, var(--accent3) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    .hero p { color: var(--muted); font-size: 15px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px; padding: 32px; margin-bottom: 32px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), var(--accent3), transparent);
+    }
+
+    /* Input row */
+    .input-wrap { flex: 1; min-width: 200px; position: relative; margin-bottom: 20px; }
+    .input-wrap i {
+      position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+      color: var(--muted); font-size: 15px; pointer-events: none;
+    }
+    .main-input {
+      width: 100%;
+      background: var(--bg); border: 1.5px solid var(--border);
+      color: var(--text); padding: 14px 14px 14px 44px;
+      border-radius: 14px; font-size: 15px; outline: none;
+      transition: all 0.25s; font-family: inherit;
+    }
+    .main-input::placeholder { color: #4b5563; }
+    .main-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(124,58,237,0.15); }
+
+    /* Options */
+    .options-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px; margin-bottom: 24px;
+    }
+    @media (max-width: 600px) { .options-row { grid-template-columns: 1fr 1fr; } }
+
+    .option-group label { display: block; font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 6px; }
+    .option-group select, .option-group input[type="color"] {
+      width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+      color: var(--text); padding: 9px 12px; border-radius: 10px;
+      font-size: 13px; outline: none; cursor: pointer; font-family: inherit;
+      transition: border-color 0.2s; appearance: none;
+    }
+    .option-group select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+    }
+    .option-group select:focus, .option-group input:focus { border-color: var(--accent); }
+    .option-group input[type="color"] { height: 42px; padding: 4px 8px; cursor: pointer; }
+
+    /* Generate Button */
+    .gen-btn {
+      width: 100%; padding: 16px; border: none; border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent) 0%, #9333ea 50%, var(--accent3) 100%);
+      color: #fff; font-size: 16px; font-weight: 700; cursor: pointer;
+      letter-spacing: 0.3px; position: relative; overflow: hidden;
+      transition: transform 0.15s, box-shadow 0.25s;
+      box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+    }
+    .gen-btn::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .gen-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(124,58,237,0.55); }
+    .gen-btn:hover::before { opacity: 1; }
+    .gen-btn:active { transform: scale(0.98); }
+
+    /* ── Result ── */
+    .result-section { display: none; animation: fadeIn 0.4s ease; }
+    .result-section.show { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 24px; padding: 32px; margin-bottom: 32px;
+      display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    .qr-frame {
+      width: 200px; height: 200px; border-radius: 18px;
+      background: var(--bg); border: 1.5px solid var(--border);
+      padding: 12px; display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden; flex-shrink: 0;
+    }
+    .qr-frame::before {
+      content: ''; position: absolute; inset: 0; border-radius: 18px;
+      background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(236,72,153,0.06));
+    }
+    .qr-frame img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; position: relative; z-index: 1; }
+    .qr-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .qr-info { flex: 1; min-width: 200px; }
+    .qr-info h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+    .qr-data-text {
+      font-size: 13px; color: var(--muted); word-break: break-all;
+      background: var(--bg); padding: 10px 14px; border-radius: 10px;
+      border: 1px solid var(--border); margin-bottom: 16px; line-height: 1.5;
+    }
+    .qr-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .qr-tag {
+      background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.25);
+      color: var(--accent2); padding: 4px 10px; border-radius: 6px;
+      font-size: 12px; font-weight: 500;
+    }
+    .dl-section { margin-top: 4px; }
+    .dl-section-label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .dl-formats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .dl-fmt-btn {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 4px;
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--text); border-radius: 14px;
+      padding: 14px 8px; cursor: pointer;
+      transition: all 0.2s; font-family: inherit;
+    }
+    .dl-fmt-btn i    { font-size: 20px; margin-bottom: 2px; }
+    .dl-fmt-btn span { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }
+    .dl-fmt-btn small{ font-size: 10px; color: var(--muted); font-weight: 400; }
+    .dl-fmt-btn:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 6px 20px rgba(124,58,237,0.2); }
+    .dl-fmt-btn:active { transform: scale(0.97); }
+    .dl-fmt-png { }
+    .dl-fmt-png:hover i  { color: #3b82f6; }
+    .dl-fmt-jpg:hover i  { color: #f59e0b; }
+    .dl-fmt-svg:hover i  { color: #10b981; }
+    .dl-fmt-pdf:hover i  { color: #ef4444; }
+    .dl-fmt-png.active { border-color: #3b82f6; background: rgba(59,130,246,0.08); }
+    .dl-fmt-jpg.active { border-color: #f59e0b; background: rgba(245,158,11,0.08); }
+    .dl-fmt-svg.active { border-color: #10b981; background: rgba(16,185,129,0.08); }
+    .dl-fmt-pdf.active { border-color: #ef4444; background: rgba(239,68,68,0.08); }
+    @media (max-width: 400px) {
+      .dl-formats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Copy Image Button ── */
+    .copy-img-btn {
+      width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--text); padding: 13px 20px; border-radius: 14px;
+      cursor: pointer; font-size: 14px; font-weight: 600; font-family: inherit;
+      transition: all 0.2s; margin-top: 10px;
+    }
+    .copy-img-btn:hover {
+      border-color: var(--accent); background: rgba(124,58,237,0.1);
+      transform: translateY(-1px); box-shadow: 0 4px 16px rgba(124,58,237,0.2);
+    }
+    .copy-img-btn:active { transform: scale(0.98); }
+    .copy-img-btn .copy-icon { font-size: 16px; color: var(--accent2); transition: color 0.2s; }
+    .copy-img-btn .copy-note { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+    .copy-img-btn.copied { border-color: var(--success); background: rgba(16,185,129,0.1); color: var(--success); }
+    .copy-img-btn.copied .copy-icon { color: var(--success); }
+    .copy-img-btn.copied .copy-note { color: var(--success); opacity: 0.7; }
+
+    /* ── Share Section ── */
+    .share-section { margin-top: 16px; }
+    .share-row {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .share-btn {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 4px;
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--text); border-radius: 14px;
+      padding: 14px 8px; cursor: pointer;
+      transition: all 0.2s; font-family: inherit;
+    }
+    .share-btn i     { font-size: 20px; margin-bottom: 2px; }
+    .share-btn span  { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }
+    .share-btn small { font-size: 10px; color: var(--muted); font-weight: 400; }
+    .share-btn:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 6px 20px rgba(124,58,237,0.2); }
+    .share-btn:active { transform: scale(0.97); }
+    .share-native:hover i { color: var(--accent2); }
+    .share-wa:hover i     { color: #25D366; }
+    .share-msg:hover i    { color: #0084FF; }
+    .share-email:hover i  { color: #ea4335; }
+    .share-native.active { border-color: var(--accent2);  background: rgba(168,85,247,0.1); }
+    .share-native.active i { color: var(--accent2); }
+    .share-wa.active    { border-color: #25D366; background: rgba(37,211,102,0.1); }
+    .share-wa.active i  { color: #25D366; }
+    .share-msg.active   { border-color: #0084FF; background: rgba(0,132,255,0.1); }
+    .share-msg.active i { color: #0084FF; }
+    .share-email.active   { border-color: #ea4335; background: rgba(234,67,53,0.1); }
+    .share-email.active i { color: #ea4335; }
+    @media (max-width: 400px) {
+      .share-row { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Section Header ── */
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .section-title {
+      font-size: 20px; font-weight: 800;
+      background: linear-gradient(90deg, var(--text), var(--muted));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .clear-btn {
+      background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25);
+      color: #ef4444; padding: 7px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .clear-btn:hover { background: rgba(239,68,68,0.2); }
+
+    /* ── History Grid ── */
+    .history-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+
+    .history-item {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px; cursor: pointer;
+      transition: all 0.25s; position: relative; overflow: hidden;
+    }
+    .history-item::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(124,58,237,0.05), rgba(236,72,153,0.04));
+      opacity: 0; transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .history-item:hover { transform: translateY(-3px); border-color: rgba(124,58,237,0.4); box-shadow: 0 8px 24px rgba(124,58,237,0.2); }
+    .history-item:hover::before { opacity: 1; }
+
+    .history-qr {
+      width: 100%; aspect-ratio: 1; object-fit: contain;
+      border-radius: 10px; background: var(--bg); padding: 8px;
+      margin-bottom: 10px; border: 1px solid var(--border);
+    }
+    .history-text { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+    .history-date { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+
+    /* ── History Search ── */
+    .history-search-wrap {
+      position: relative; margin-bottom: 14px;
+    }
+    .history-search-wrap i {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      color: var(--muted); font-size: 14px; pointer-events: none;
+    }
+    .history-search {
+      width: 100%; background: var(--bg); border: 1.5px solid var(--border);
+      color: var(--text); padding: 11px 14px 11px 40px;
+      border-radius: 12px; font-size: 14px; outline: none; font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .history-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+    .history-search::placeholder { color: var(--muted); }
+
+    /* ── History Filter Tabs ── */
+    .history-filter-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+    .hist-filter-tab {
+      padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--border);
+      background: var(--surface2); color: var(--muted);
+      font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
+      transition: all 0.2s; display: flex; align-items: center; gap: 5px;
+    }
+    .hist-filter-tab:hover { border-color: var(--accent); color: var(--text); }
+    .hist-filter-tab.active { background: rgba(124,58,237,0.15); border-color: var(--accent); color: var(--accent2); }
+
+    /* ── Favorite / Pinned ── */
+    .history-item.favorited {
+      border-color: rgba(245,158,11,0.45);
+      box-shadow: 0 2px 16px rgba(245,158,11,0.14);
+    }
+    .history-item.favorited::before { opacity: 0; }
+    .history-item.favorited:hover { border-color: rgba(245,158,11,0.7); }
+    .hist-fav {
+      background: rgba(250,204,21,0.08); color: #a16207;
+      border: 1px solid rgba(250,204,21,0.25); flex: 0 0 auto; padding: 7px 9px;
+    }
+    html[data-mode="dark"] .hist-fav { color: #ca8a04; }
+    .hist-fav:hover { background: rgba(250,204,21,0.2); }
+    .hist-fav.active { background: rgba(250,204,21,0.22); color: #f59e0b; border-color: rgba(245,158,11,0.55); }
+
+    .history-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .hist-btn {
+      flex: 1; padding: 7px; border-radius: 8px; border: none;
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .hist-view { background: rgba(124,58,237,0.15); color: var(--accent2); border: 1px solid rgba(124,58,237,0.25); }
+    .hist-view:hover { background: rgba(124,58,237,0.28); }
+    .hist-dl   { background: rgba(16,185,129,0.12); color: #10b981; border: 1px solid rgba(16,185,129,0.25); text-decoration: none; }
+    .hist-dl:hover { background: rgba(16,185,129,0.25); }
+    .hist-del  { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); flex: 0 0 auto; padding: 7px 9px; }
+    .hist-del:hover { background: rgba(239,68,68,0.22); }
+
+    .empty-history { text-align: center; padding: 48px 20px; color: var(--muted); grid-column: 1 / -1; }
+    .empty-history i { font-size: 48px; margin-bottom: 14px; opacity: 0.25; display: block; }
+
+    /* ── Login Wall ── */
+    .login-wall {
+      grid-column: 1 / -1;
+      text-align: center; padding: 52px 24px;
+      background: var(--surface2);
+      border: 1.5px dashed rgba(124,58,237,0.35);
+      border-radius: 20px;
+    }
+    .login-wall-icon {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(236,72,153,0.15));
+      border: 1.5px solid rgba(124,58,237,0.3);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 26px; color: var(--accent2);
+    }
+    .login-wall h4 { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 7px; }
+    .login-wall p  { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+    .login-wall-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      color: #fff; padding: 11px 24px; border-radius: 12px;
+      border: none; font-size: 14px; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: opacity 0.2s, transform 0.15s;
+      box-shadow: 0 4px 16px rgba(124,58,237,0.35);
+    }
+    .login-wall-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .login-wall-btn:active { transform: scale(0.98); }
+    /* Blur+disable history controls when logged out */
+    .history-controls-locked { opacity: 0.4; pointer-events: none; user-select: none; filter: blur(1px); }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 14px 20px; border-radius: 12px;
+      font-size: 14px; font-weight: 500;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      transform: translateY(80px); opacity: 0;
+      transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+      z-index: 200; max-width: 320px;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success .toast-icon { color: var(--success); }
+    .toast.error   .toast-icon { color: #ef4444; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+    @media (max-width: 500px) {
+      .result-card { flex-direction: column; align-items: center; }
+      .qr-frame { width: 160px; height: 160px; }
+      .card, .result-card { padding: 20px; }
+    }
+
+    /* ── Theme Controls ── */
+    .theme-controls { display: flex; align-items: center; gap: 8px; }
+
+    .btn-icon {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 38px; height: 38px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { background: rgba(124,58,237,0.2); border-color: var(--accent); }
+
+    /* Theme Panel */
+    .theme-panel-wrap { position: relative; }
+
+    .theme-panel {
+      display: none;
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      width: 260px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+      z-index: 300;
+      animation: slideUp 0.2s ease;
+    }
+    .theme-panel.open { display: block; }
+
+    .tp-section-label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 10px;
+    }
+
+    /* Mode Toggle Switch */
+    .mode-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+    }
+    .mode-toggle-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text); }
+    .mode-toggle-label i { color: var(--accent2); }
+
+    .switch {
+      position: relative; display: inline-block;
+      width: 44px; height: 24px; flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-slider {
+      position: absolute; cursor: pointer;
+      inset: 0; background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 99px; transition: 0.3s;
+    }
+    .switch-slider::before {
+      content: ''; position: absolute;
+      height: 16px; width: 16px;
+      left: 3px; bottom: 2px;
+      background: var(--muted);
+      border-radius: 50%; transition: 0.3s;
+    }
+    .switch input:checked + .switch-slider { background: var(--accent); border-color: var(--accent); }
+    .switch input:checked + .switch-slider::before { transform: translateX(20px); background: #fff; }
+
+    /* Color Swatches */
+    .swatches-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    .swatch {
+      width: 100%; aspect-ratio: 1;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+      position: relative;
+      outline: none;
+    }
+    .swatch:hover { transform: scale(1.12); }
+    .swatch.active {
+      border-color: var(--text);
+      box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--text);
+    }
+    .swatch-purple { background: linear-gradient(135deg, #7c3aed, #ec4899); }
+    .swatch-blue   { background: linear-gradient(135deg, #1d4ed8, #06b6d4); }
+    .swatch-green  { background: linear-gradient(135deg, #047857, #34d399); }
+    .swatch-orange { background: linear-gradient(135deg, #b45309, #f97316); }
+    .swatch-rose   { background: linear-gradient(135deg, #be123c, #fb7185); }
+    .swatch-teal   { background: linear-gradient(135deg, #0f766e, #22d3ee); }
+
+    .swatch-label {
+      font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px;
+    }
+    .swatch-item { display: flex; flex-direction: column; align-items: center; }
+
+    /* ── QR Type Tabs ── */
+    .type-tabs {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      margin-bottom: 22px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .type-tab {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      color: var(--muted);
+      padding: 8px 14px; border-radius: 10px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s;
+      white-space: nowrap; font-family: inherit;
+    }
+    .type-tab i { font-size: 13px; }
+    .type-tab:hover  { border-color: var(--accent); color: var(--text); background: rgba(124,58,237,0.08); }
+    .type-tab.active {
+      background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(236,72,153,0.12));
+      border-color: var(--accent);
+      color: var(--accent2);
+      box-shadow: 0 2px 12px rgba(124,58,237,0.18);
+    }
+
+    /* ── Type Forms ── */
+    .type-form { display: none; }
+    .type-form.active { display: block; animation: fadeIn 0.2s ease; }
+
+    .field-row {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 14px; margin-bottom: 14px;
+    }
+    @media (max-width: 560px) { .field-row { grid-template-columns: 1fr; } }
+
+    .field-group { display: flex; flex-direction: column; margin-bottom: 14px; }
+    .field-group:last-child { margin-bottom: 0; }
+    .field-row .field-group { margin-bottom: 0; }
+
+    .field-group label {
+      font-size: 12px; color: var(--muted); font-weight: 500;
+      margin-bottom: 6px; display: block;
+    }
+    .field-group input,
+    .field-group select,
+    .field-group textarea {
+      width: 100%;
+      background: var(--bg); border: 1.5px solid var(--border);
+      color: var(--text); padding: 11px 14px; border-radius: 11px;
+      font-size: 14px; outline: none; font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field-group input:focus,
+    .field-group select:focus,
+    .field-group textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+    }
+    .field-group select {
+      appearance: none; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center;
+      padding-right: 32px;
+    }
+    .field-group textarea {
+      resize: vertical; min-height: 80px; line-height: 1.5;
+    }
+
+    /* Checkbox row inside field-group */
+    .checkbox-label {
+      display: flex; align-items: center; gap: 9px;
+      background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 11px; padding: 11px 14px;
+      font-size: 14px; color: var(--text); cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .checkbox-label:hover { border-color: var(--accent); }
+    .checkbox-label input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--accent);
+      cursor: pointer; flex-shrink: 0;
+      border: none; padding: 0; background: none;
+    }
+
+    /* Options divider */
+    .options-divider {
+      border: none; border-top: 1px solid var(--border);
+      margin: 20px 0;
+    }
+
+    /* ── Profile Modal: Picture Source Tabs ── */
+    .pic-source-tabs {
+      display: flex; gap: 4px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 14px;
+    }
+    .pic-source-tab {
+      flex: 1; padding: 7px 6px;
+      border: none; border-radius: 9px;
+      background: transparent; color: var(--muted);
+      font-size: 12px; font-weight: 500; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      transition: all 0.2s; font-family: inherit; white-space: nowrap;
+    }
+    .pic-source-tab:hover { color: var(--text); }
+    .pic-source-tab.active {
+      background: var(--surface2); color: var(--accent2);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 6px rgba(0,0,0,0.18);
+    }
+    .pic-source-pane { display: none; }
+    .pic-source-pane.active { display: block; }
+
+    /* ── Avatar Picker Grid ── */
+    .avatar-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    @media (max-width: 420px) { .avatar-picker-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    .avatar-option {
+      position: relative; cursor: pointer;
+      border-radius: 50%; overflow: hidden;
+      border: 2.5px solid transparent;
+      aspect-ratio: 1;
+      transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+      background: var(--bg);
+    }
+    .avatar-option img {
+      width: 100%; height: 100%; display: block; border-radius: 50%;
+    }
+    .avatar-option:hover { transform: scale(1.1); border-color: rgba(124,58,237,0.5); }
+    .avatar-option.selected {
+      border-color: var(--accent2);
+      box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent2);
+      transform: scale(1.08);
+    }
+    .avatar-option .av-check {
+      display: none; position: absolute; inset: 0;
+      background: rgba(124,58,237,0.55);
+      align-items: center; justify-content: center;
+      font-size: 14px; color: #fff; border-radius: 50%;
+    }
+    .avatar-option.selected .av-check { display: flex; }
+  </style>
+</head>
+<body>
+
+<!-- Profile Modal -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal">
+    <h3><i class="fa-solid fa-user-pen"></i> Edit Profile</h3>
+
+    <!-- Avatar Preview -->
+    <div class="avatar-preview-wrap">
+      <div id="modalAvatarInitial" style="display:flex">?</div>
+      <img id="modalAvatarImg" src="" style="display:none" alt="preview"/>
+      <div>
+        <p style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:4px">Profile Picture</p>
+        <p style="font-size:12px;color:var(--muted);line-height:1.5">Choose a preset avatar, paste a URL,<br>or upload from your device.</p>
+      </div>
+    </div>
+
+    <!-- Display Name -->
+    <div class="form-group">
+      <label>Display Name</label>
+      <input type="text" id="modalName" placeholder="Your name" />
+    </div>
+
+    <!-- Picture Source Tabs -->
+    <div class="form-group" style="margin-bottom:0">
+      <label>Profile Picture</label>
+      <div class="pic-source-tabs">
+        <button class="pic-source-tab active" data-pane="pane-avatar" onclick="switchPicTab('pane-avatar')">
+          <i class="fa-solid fa-face-smile"></i> Choose Avatar
+        </button>
+        <button class="pic-source-tab" data-pane="pane-url" onclick="switchPicTab('pane-url')">
+          <i class="fa-solid fa-link"></i> URL
+        </button>
+        <button class="pic-source-tab" data-pane="pane-upload" onclick="switchPicTab('pane-upload')">
+          <i class="fa-solid fa-upload"></i> Upload
+        </button>
+      </div>
+
+      <!-- Pane: Avatar Grid -->
+      <div class="pic-source-pane active" id="pane-avatar">
+        <div class="avatar-picker-grid" id="avatarPickerGrid"></div>
+      </div>
+
+      <!-- Pane: URL -->
+      <div class="pic-source-pane" id="pane-url">
+        <input type="url" id="modalAvatarUrl" placeholder="https://example.com/photo.jpg"
+          style="width:100%;background:var(--bg);border:1.5px solid var(--border);color:var(--text);
+                 padding:11px 14px;border-radius:11px;font-size:14px;outline:none;font-family:inherit;" />
+      </div>
+
+      <!-- Pane: Upload -->
+      <div class="pic-source-pane" id="pane-upload">
+        <input type="file" id="modalAvatarFile" accept="image/*"
+          style="background:var(--bg);border:1px solid var(--border);color:var(--muted);
+                 padding:8px 12px;border-radius:10px;width:100%;font-size:13px;cursor:pointer;" />
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn-ghost btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveProfile()"><i class="fa-solid fa-check"></i> Save Profile</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrapper">
+
+  <!-- Profile Header -->
+  <div class="profile-bar">
+    <div class="profile-left">
+      <div class="avatar-wrap" onclick="openModal()">
+        <div id="avatarEl" class="avatar-placeholder">?</div>
+        <div class="avatar-edit-btn"><i class="fa-solid fa-pen"></i></div>
+      </div>
+      <div class="profile-info">
+        <h2 id="profileNameEl">Your Name</h2>
+        <span>QR Code Generator</span>
+      </div>
+    </div>
+    <div class="theme-controls">
+      <button class="btn-icon" id="modeBtn" onclick="toggleMode()" title="Toggle Dark/Light"><i class="fa-solid fa-moon" id="modeIcon"></i></button>
+      <div class="theme-panel-wrap">
+        <button class="btn-icon" onclick="toggleThemePanel()" title="Color Themes"><i class="fa-solid fa-palette"></i></button>
+        <div class="theme-panel" id="themePanel">
+          <div class="tp-section-label">Mode</div>
+          <div class="mode-toggle-row">
+            <span class="mode-toggle-label"><i class="fa-solid fa-circle-half-stroke"></i> Light Mode</span>
+            <label class="switch">
+              <input type="checkbox" id="modeSwitch" onchange="toggleMode()" />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="tp-section-label">Accent Color</div>
+          <div class="swatches-grid">
+            <div class="swatch-item"><button class="swatch swatch-purple" data-accent="purple" onclick="setAccent('purple')" title="Purple"></button><div class="swatch-label">Purple</div></div>
+            <div class="swatch-item"><button class="swatch swatch-blue"   data-accent="blue"   onclick="setAccent('blue')"   title="Blue"></button><div class="swatch-label">Blue</div></div>
+            <div class="swatch-item"><button class="swatch swatch-green"  data-accent="green"  onclick="setAccent('green')"  title="Green"></button><div class="swatch-label">Green</div></div>
+            <div class="swatch-item"><button class="swatch swatch-orange" data-accent="orange" onclick="setAccent('orange')" title="Orange"></button><div class="swatch-label">Orange</div></div>
+            <div class="swatch-item"><button class="swatch swatch-rose"   data-accent="rose"   onclick="setAccent('rose')"   title="Rose"></button><div class="swatch-label">Rose</div></div>
+            <div class="swatch-item"><button class="swatch swatch-teal"   data-accent="teal"   onclick="setAccent('teal')"   title="Teal"></button><div class="swatch-label">Teal</div></div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-ghost" onclick="openModal()">
+        <i class="fa-solid fa-pen-to-square" style="margin-right:6px"></i>Edit Profile
+      </button>
+      <button class="btn-logout" id="logoutBtn" onclick="logout()" title="Log out and reset profile" style="display:none">
+        <i class="fa-solid fa-right-from-bracket"></i>Logout
+      </button>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-badge"><i class="fa-solid fa-qrcode"></i> Powered by GoQR API</div>
+    <h1>QR Code Generator</h1>
+    <p>Turn any text, URL, or data into a scannable QR code instantly</p>
+  </div>
+
+  <!-- Generator Card -->
+  <div class="card">
+
+    <!-- Type Tabs -->
+    <div class="type-tabs" id="typeTabs">
+      <button class="type-tab active" onclick="switchType('text')"    data-type="text">    <i class="fa-solid fa-font"></i><span>Text</span></button>
+      <button class="type-tab"        onclick="switchType('url')"     data-type="url">     <i class="fa-solid fa-link"></i><span>URL</span></button>
+      <button class="type-tab"        onclick="switchType('wifi')"    data-type="wifi">    <i class="fa-solid fa-wifi"></i><span>WiFi</span></button>
+      <button class="type-tab"        onclick="switchType('phone')"   data-type="phone">   <i class="fa-solid fa-phone"></i><span>Phone</span></button>
+      <button class="type-tab"        onclick="switchType('email')"   data-type="email">   <i class="fa-solid fa-envelope"></i><span>Email</span></button>
+      <button class="type-tab"        onclick="switchType('sms')"     data-type="sms">     <i class="fa-solid fa-message"></i><span>SMS</span></button>
+      <button class="type-tab"        onclick="switchType('vcard')"   data-type="vcard">   <i class="fa-solid fa-address-card"></i><span>Contact</span></button>
+      <button class="type-tab"        onclick="switchType('location')" data-type="location"><i class="fa-solid fa-location-dot"></i><span>Location</span></button>
+    </div>
+
+    <!-- Dynamic Form Panels -->
+    <div id="typeForms">
+
+      <!-- Text -->
+      <div class="type-form active" id="form-text">
+        <div class="input-wrap" style="margin-bottom:0">
+          <i class="fa-solid fa-font"></i>
+          <input class="main-input" type="text" id="f-text" placeholder="Enter any text to encode…" />
+        </div>
+      </div>
+
+      <!-- URL -->
+      <div class="type-form" id="form-url">
+        <div class="input-wrap" style="margin-bottom:0">
+          <i class="fa-solid fa-link"></i>
+          <input class="main-input" type="url" id="f-url" placeholder="https://example.com" />
+        </div>
+      </div>
+
+      <!-- WiFi -->
+      <div class="type-form" id="form-wifi">
+        <div class="field-row">
+          <div class="field-group">
+            <label><i class="fa-solid fa-wifi" style="margin-right:5px"></i>Network Name (SSID)</label>
+            <input type="text" id="f-wifi-ssid" placeholder="MyHomeNetwork" />
+          </div>
+          <div class="field-group">
+            <label><i class="fa-solid fa-lock" style="margin-right:5px"></i>Password</label>
+            <input type="password" id="f-wifi-pass" placeholder="network password" />
+          </div>
+        </div>
+        <div class="field-row" style="margin-bottom:0">
+          <div class="field-group" style="margin-bottom:0">
+            <label><i class="fa-solid fa-shield-halved" style="margin-right:5px"></i>Security Type</label>
+            <select id="f-wifi-sec">
+              <option value="WPA">WPA / WPA2</option>
+              <option value="WEP">WEP</option>
+              <option value="nopass">None (Open)</option>
+            </select>
+          </div>
+          <div class="field-group" style="margin-bottom:0">
+            <label><i class="fa-solid fa-eye-slash" style="margin-right:5px"></i>Hidden Network</label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="f-wifi-hidden" />
+              <span>Yes, network is hidden</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone -->
+      <div class="type-form" id="form-phone">
+        <div class="input-wrap" style="margin-bottom:0">
+          <i class="fa-solid fa-phone"></i>
+          <input class="main-input" type="tel" id="f-phone" placeholder="+1 234 567 8900" />
+        </div>
+      </div>
+
+      <!-- Email -->
+      <div class="type-form" id="form-email">
+        <div class="field-group">
+          <label><i class="fa-solid fa-at" style="margin-right:5px"></i>To (Email Address)</label>
+          <input type="email" id="f-email-to" placeholder="someone@example.com" />
+        </div>
+        <div class="field-group">
+          <label><i class="fa-solid fa-heading" style="margin-right:5px"></i>Subject</label>
+          <input type="text" id="f-email-subject" placeholder="Hello!" />
+        </div>
+        <div class="field-group" style="margin-bottom:0">
+          <label><i class="fa-solid fa-align-left" style="margin-right:5px"></i>Body</label>
+          <textarea id="f-email-body" placeholder="Message body…"></textarea>
+        </div>
+      </div>
+
+      <!-- SMS -->
+      <div class="type-form" id="form-sms">
+        <div class="field-group">
+          <label><i class="fa-solid fa-phone" style="margin-right:5px"></i>Phone Number</label>
+          <input type="tel" id="f-sms-phone" placeholder="+1 234 567 8900" />
+        </div>
+        <div class="field-group" style="margin-bottom:0">
+          <label><i class="fa-solid fa-comment" style="margin-right:5px"></i>Message</label>
+          <textarea id="f-sms-msg" placeholder="Your message…"></textarea>
+        </div>
+      </div>
+
+      <!-- Contact (vCard) -->
+      <div class="type-form" id="form-vcard">
+        <div class="field-row">
+          <div class="field-group">
+            <label><i class="fa-solid fa-user" style="margin-right:5px"></i>First Name</label>
+            <input type="text" id="f-vc-first" placeholder="John" />
+          </div>
+          <div class="field-group">
+            <label><i class="fa-solid fa-user" style="margin-right:5px"></i>Last Name</label>
+            <input type="text" id="f-vc-last" placeholder="Doe" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-group">
+            <label><i class="fa-solid fa-phone" style="margin-right:5px"></i>Phone</label>
+            <input type="tel" id="f-vc-phone" placeholder="+1 234 567 8900" />
+          </div>
+          <div class="field-group">
+            <label><i class="fa-solid fa-envelope" style="margin-right:5px"></i>Email</label>
+            <input type="email" id="f-vc-email" placeholder="john@example.com" />
+          </div>
+        </div>
+        <div class="field-row" style="margin-bottom:0">
+          <div class="field-group" style="margin-bottom:0">
+            <label><i class="fa-solid fa-building" style="margin-right:5px"></i>Organization</label>
+            <input type="text" id="f-vc-org" placeholder="Company Inc." />
+          </div>
+          <div class="field-group" style="margin-bottom:0">
+            <label><i class="fa-solid fa-globe" style="margin-right:5px"></i>Website</label>
+            <input type="url" id="f-vc-url" placeholder="https://example.com" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Location -->
+      <div class="type-form" id="form-location">
+        <div class="field-row" style="margin-bottom:0">
+          <div class="field-group" style="margin-bottom:0">
+            <label><i class="fa-solid fa-up-down" style="margin-right:5px"></i>Latitude</label>
+            <input type="number" id="f-lat" placeholder="37.7749" step="any" />
+          </div>
+          <div class="field-group" style="margin-bottom:0">
+            <label><i class="fa-solid fa-left-right" style="margin-right:5px"></i>Longitude</label>
+            <input type="number" id="f-lng" placeholder="-122.4194" step="any" />
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5">
+          <i class="fa-solid fa-circle-info" style="margin-right:4px"></i>
+          Generates a <code style="color:var(--accent2)">geo:</code> URI — opens in Google Maps, Apple Maps, etc.
+        </p>
+      </div>
+
+    </div><!-- /typeForms -->
+
+    <hr class="options-divider" />
+
+    <!-- QR Options -->
+    <div class="options-row">
+      <div class="option-group">
+        <label><i class="fa-solid fa-expand"></i> Size</label>
+        <select id="qrSize">
+          <option value="150x150">150 × 150</option>
+          <option value="200x200">200 × 200</option>
+          <option value="300x300" selected>300 × 300</option>
+          <option value="400x400">400 × 400</option>
+          <option value="500x500">500 × 500</option>
+        </select>
+      </div>
+      <div class="option-group">
+        <label><i class="fa-solid fa-shield-halved"></i> Error Correction</label>
+        <select id="qrEcc">
+          <option value="L">Low (L)</option>
+          <option value="M" selected>Medium (M)</option>
+          <option value="Q">Quartile (Q)</option>
+          <option value="H">High (H)</option>
+        </select>
+      </div>
+      <div class="option-group">
+        <label><i class="fa-solid fa-palette"></i> Foreground Color</label>
+        <input type="color" id="qrColor" value="#000000" />
+      </div>
+    </div>
+
+    <button class="gen-btn" onclick="generateQR()">
+      <i class="fa-solid fa-wand-magic-sparkles" style="margin-right:8px"></i>
+      Generate QR Code
+    </button>
+  </div>
+
+  <!-- Result -->
+  <div class="result-section" id="resultSection">
+    <div class="result-card">
+      <div class="qr-frame" id="qrFrame">
+        <div class="qr-spinner"></div>
+      </div>
+      <div class="qr-info">
+        <h3>Your QR Code is Ready!</h3>
+        <div class="qr-data-text" id="qrDataText">—</div>
+        <div class="qr-meta" id="qrMeta"></div>
+        <div class="dl-section" id="dlSection">
+          <div class="dl-section-label"><i class="fa-solid fa-download"></i> Download As</div>
+          <div class="dl-formats">
+            <button class="dl-fmt-btn dl-fmt-png" onclick="downloadQR('png')" title="Download PNG">
+              <i class="fa-solid fa-image"></i>
+              <span>PNG</span>
+              <small>Raster</small>
+            </button>
+            <button class="dl-fmt-btn dl-fmt-jpg" onclick="downloadQR('jpg')" title="Download JPG">
+              <i class="fa-regular fa-image"></i>
+              <span>JPG</span>
+              <small>Smaller</small>
+            </button>
+            <button class="dl-fmt-btn dl-fmt-svg" onclick="downloadQR('svg')" title="Download SVG">
+              <i class="fa-solid fa-bezier-curve"></i>
+              <span>SVG</span>
+              <small>Vector</small>
+            </button>
+            <button class="dl-fmt-btn dl-fmt-pdf" onclick="downloadQR('pdf')" title="Download PDF">
+              <i class="fa-solid fa-file-pdf"></i>
+              <span>PDF</span>
+              <small>Print</small>
+            </button>
+          </div>
+        </div>
+
+        <!-- Copy Image to Clipboard -->
+        <button class="copy-img-btn" id="copyImgBtn" onclick="copyQRToClipboard()">
+          <i class="fa-solid fa-clipboard copy-icon"></i>
+          <span class="copy-label">Copy Image to Clipboard</span>
+          <span class="copy-note">— no download needed</span>
+        </button>
+
+        <!-- Share Section -->
+        <div class="share-section" id="shareSection">
+          <div class="dl-section-label" style="margin-top:18px"><i class="fa-solid fa-share-nodes"></i> Share QR</div>
+          <div class="share-row">
+            <button class="share-btn share-native" onclick="shareQRNative()" title="Native share — WhatsApp, Nearby Share, AirDrop &amp; more">
+              <i class="fa-solid fa-share-nodes"></i>
+              <span>Share</span>
+              <small>Nearby / More</small>
+            </button>
+            <button class="share-btn share-wa" onclick="shareViaWhatsApp()" title="Share via WhatsApp">
+              <i class="fa-brands fa-whatsapp"></i>
+              <span>WhatsApp</span>
+              <small>Message</small>
+            </button>
+            <button class="share-btn share-msg" onclick="shareViaMessenger()" title="Share via Messenger">
+              <i class="fa-brands fa-facebook-messenger"></i>
+              <span>Messenger</span>
+              <small>FB Chat</small>
+            </button>
+            <button class="share-btn share-email" onclick="shareViaEmail()" title="Share via Email">
+              <i class="fa-solid fa-envelope"></i>
+              <span>Email</span>
+              <small>Mail</small>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div>
+    <div class="section-header">
+      <div class="section-title">
+        <i class="fa-solid fa-clock-rotate-left" style="color:var(--accent2);margin-right:8px;font-size:18px;-webkit-text-fill-color:var(--accent2)"></i>
+        History
+      </div>
+      <button class="clear-btn" onclick="clearHistory()">
+        <i class="fa-solid fa-trash"></i> Clear All
+      </button>
+    </div>
+
+    <!-- Search + Filter (locked when logged out) -->
+    <div id="historyControls">
+      <div class="history-search-wrap">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input class="history-search" id="historySearch" type="text"
+          placeholder="Search history…" oninput="onHistorySearch()" onfocus="onHistorySearch()" />
+      </div>
+      <div class="history-filter-tabs">
+        <button class="hist-filter-tab active" data-filter="all" onclick="setHistFilter('all')">
+          <i class="fa-solid fa-list"></i> All
+        </button>
+        <button class="hist-filter-tab" data-filter="favorites" onclick="setHistFilter('favorites')">
+          <i class="fa-solid fa-star"></i> Favorites
+        </button>
+      </div>
+    </div>
+
+    <div id="historyGrid" class="history-grid"></div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <i class="toast-icon fa-solid" id="toastIcon"></i>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+  const PROFILE_KEY = 'qrgen_profile';
+  const HISTORY_KEY = 'qrgen_history';
+  let pendingAvatarDataUrl  = '';
+  let pendingPresetAvatarUrl = '';
+  let activePicPane = 'pane-avatar';
+
+  /* ── Preset Avatars ── */
+  const PRESET_AVATARS = [
+    { id:'felix',  url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Felix'  },
+    { id:'lily',   url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Lily'   },
+    { id:'max',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Max'    },
+    { id:'luna',   url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Luna'   },
+    { id:'zoe',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Zoe'    },
+    { id:'sam',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Sam'    },
+    { id:'mia',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Mia'    },
+    { id:'leo',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Leo'    },
+    { id:'ella',   url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Ella'   },
+    { id:'kai',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Kai'    },
+    { id:'nora',   url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Nora'   },
+    { id:'ace',    url:'https://api.dicebear.com/9.x/fun-emoji/svg?seed=Ace'    },
+  ];
+
+  function buildAvatarGrid(currentAvatarUrl) {
+    const grid = document.getElementById('avatarPickerGrid');
+    if (!grid) return;
+    grid.innerHTML = PRESET_AVATARS.map(av => {
+      const sel = (currentAvatarUrl === av.url) ? ' selected' : '';
+      return `<div class="avatar-option${sel}" data-url="${av.url}" onclick="selectPresetAvatar('${av.url}', this)" title="${av.id}">
+        <img src="${av.url}" alt="${av.id}" loading="lazy" />
+        <div class="av-check"><i class="fa-solid fa-check"></i></div>
+      </div>`;
+    }).join('');
+  }
+
+  function switchPicTab(paneId) {
+    activePicPane = paneId;
+    document.querySelectorAll('.pic-source-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.pane === paneId));
+    document.querySelectorAll('.pic-source-pane').forEach(p =>
+      p.classList.toggle('active', p.id === paneId));
+    // Clear pending states for non-active panes
+    if (paneId !== 'pane-upload') { pendingAvatarDataUrl = ''; }
+    if (paneId !== 'pane-avatar') { pendingPresetAvatarUrl = ''; document.querySelectorAll('.avatar-option').forEach(o => o.classList.remove('selected')); }
+    if (paneId !== 'pane-url')    { document.getElementById('modalAvatarUrl').value = ''; }
+    // Update preview based on current active pane
+    const name = document.getElementById('modalName').value;
+    if (paneId === 'pane-url') updateModalPreview(name, document.getElementById('modalAvatarUrl').value);
+    else if (paneId === 'pane-upload') updateModalPreview(name, pendingAvatarDataUrl);
+    else updateModalPreview(name, pendingPresetAvatarUrl);
+  }
+
+  function selectPresetAvatar(url, el) {
+    pendingPresetAvatarUrl = url;
+    document.querySelectorAll('.avatar-option').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    updateModalPreview('', url);
+  }
+
+  /* ─── Auth Gate ─── */
+  function isLoggedIn() {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (!raw) return false;
+    try {
+      const p = JSON.parse(raw);
+      return !!(p.name && p.name.trim());
+    } catch { return false; }
+  }
+
+  function requireLogin(msg) {
+    msg = msg || 'Please set up your profile to use History.';
+    showToast('error', 'fa-user-lock', msg);
+    setTimeout(() => openModal(), 500);
+    return false;
+  }
+
+  /* ─── Profile ─── */
+  function loadProfile() {
+    const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+    renderProfileBar(p.name || 'Your Name', p.avatar || '');
+  }
+
+  function renderProfileBar(name, avatar) {
+    document.getElementById('profileNameEl').textContent = name;
+    const wrap = document.getElementById('avatarEl');
+    if (avatar) {
+      wrap.outerHTML = `<img id="avatarEl" class="avatar" src="${avatar}" alt="Avatar"
+        onerror="document.getElementById('avatarEl').outerHTML='<div id=\\'avatarEl\\' class=\\'avatar-placeholder\\'>${(name[0]||'?').toUpperCase()}</div>'" />`;
+    } else {
+      const letter = (name[0] || '?').toUpperCase();
+      const el = document.getElementById('avatarEl');
+      if (el.tagName === 'IMG') {
+        el.outerHTML = `<div id="avatarEl" class="avatar-placeholder">${letter}</div>`;
+      } else { el.className = 'avatar-placeholder'; el.textContent = letter; }
+    }
+    /* Show logout button only when a profile is active */
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.style.display = isLoggedIn() ? '' : 'none';
+  }
+
+  function openModal() {
+    pendingAvatarDataUrl   = '';
+    pendingPresetAvatarUrl = '';
+    const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+    const savedAvatar = p.avatar || '';
+    document.getElementById('modalName').value       = p.name || '';
+    document.getElementById('modalAvatarUrl').value  = '';
+    document.getElementById('modalAvatarFile').value = '';
+
+    // Detect which tab to restore
+    const isPreset = PRESET_AVATARS.some(av => av.url === savedAvatar);
+    if (isPreset) {
+      pendingPresetAvatarUrl = savedAvatar;
+      buildAvatarGrid(savedAvatar);
+      switchPicTab('pane-avatar');
+    } else if (savedAvatar && !savedAvatar.startsWith('data:')) {
+      document.getElementById('modalAvatarUrl').value = savedAvatar;
+      buildAvatarGrid('');
+      switchPicTab('pane-url');
+    } else {
+      buildAvatarGrid('');
+      switchPicTab('pane-avatar');
+    }
+
+    updateModalPreview(p.name || '', savedAvatar);
+    document.getElementById('profileModal').classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('profileModal').classList.remove('open');
+  }
+  document.getElementById('profileModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('profileModal')) closeModal();
+  });
+
+  function updateModalPreview(name, url) {
+    const img = document.getElementById('modalAvatarImg');
+    const ini = document.getElementById('modalAvatarInitial');
+    if (url) {
+      img.src = url;
+      img.style.display = 'block';
+      ini.style.display = 'none';
+      img.onerror = () => { img.style.display = 'none'; ini.style.display = 'flex'; };
+    } else {
+      img.style.display = 'none';
+      ini.style.display = 'flex';
+      ini.textContent = (name[0] || '?').toUpperCase();
+    }
+  }
+
+  document.getElementById('modalAvatarUrl').addEventListener('input', function () {
+    pendingAvatarDataUrl    = '';
+    pendingPresetAvatarUrl  = '';
+    document.querySelectorAll('.avatar-option').forEach(o => o.classList.remove('selected'));
+    updateModalPreview(document.getElementById('modalName').value, this.value);
+  });
+  document.getElementById('modalName').addEventListener('input', function () {
+    const hasImg = pendingPresetAvatarUrl || pendingAvatarDataUrl || document.getElementById('modalAvatarUrl').value;
+    if (!hasImg) updateModalPreview(this.value, '');
+  });
+  document.getElementById('modalAvatarFile').addEventListener('change', function () {
+    const file = this.files[0];
+    if (!file) return;
+    pendingPresetAvatarUrl = '';
+    document.querySelectorAll('.avatar-option').forEach(o => o.classList.remove('selected'));
+    const reader = new FileReader();
+    reader.onload = e => {
+      pendingAvatarDataUrl = e.target.result;
+      updateModalPreview('', pendingAvatarDataUrl);
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function saveProfile() {
+    const name = document.getElementById('modalName').value.trim() || 'Your Name';
+    let avatar = '';
+    if (activePicPane === 'pane-avatar') {
+      avatar = pendingPresetAvatarUrl;
+    } else if (activePicPane === 'pane-upload') {
+      avatar = pendingAvatarDataUrl;
+    } else {
+      avatar = document.getElementById('modalAvatarUrl').value.trim();
+    }
+    localStorage.setItem(PROFILE_KEY, JSON.stringify({ name, avatar }));
+    renderProfileBar(name, avatar);
+    closeModal();
+    showToast('success', 'fa-circle-check', 'Profile updated successfully!');
+  }
+
+  /* ─── Download Helpers ─── */
+  let currentQRState = null; // { data, size, ecc, color }
+
+  function buildQRUrlFmt(state, format) {
+    const base = `https://api.qrserver.com/v1/create-qr-code/?size=${state.size}&data=${encodeURIComponent(state.data)}&ecc=${state.ecc}&color=${state.color.replace('#','')}&bgcolor=ffffff&margin=10`;
+    return format === 'svg' ? base + '&format=svg' : base;
+  }
+
+  function loadImage(src) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = () => res(img);
+      img.onerror = rej;
+      img.src = src + (src.includes('?') ? '&_=' : '?_=') + Date.now();
+    });
+  }
+
+  function triggerBlobDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function downloadQR(fmt) {
+    if (!currentQRState) {
+      showToast('error', 'fa-circle-exclamation', 'Generate a QR code first!');
+      return;
+    }
+    const ts  = Date.now();
+    const btn = document.querySelector(`.dl-fmt-${fmt}`);
+    if (btn) { btn.classList.add('active'); setTimeout(() => btn.classList.remove('active'), 1200); }
+
+    try {
+      if (fmt === 'png') {
+        /* ── PNG: direct fetch → blob ── */
+        const resp = await fetch(buildQRUrlFmt(currentQRState, 'png'));
+        const blob = await resp.blob();
+        triggerBlobDownload(blob, `qrcode_${ts}.png`);
+        showToast('success', 'fa-image', 'Downloaded as PNG!');
+
+      } else if (fmt === 'jpg') {
+        /* ── JPG: draw PNG on white canvas → JPEG blob ── */
+        const [w, h] = currentQRState.size.split('x').map(Number);
+        const img    = await loadImage(buildQRUrlFmt(currentQRState, 'png'));
+        const c      = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        c.toBlob(blob => triggerBlobDownload(blob, `qrcode_${ts}.jpg`), 'image/jpeg', 0.95);
+        showToast('success', 'fa-image', 'Downloaded as JPG!');
+
+      } else if (fmt === 'svg') {
+        /* ── SVG: fetch vector from API ── */
+        const resp = await fetch(buildQRUrlFmt(currentQRState, 'svg'));
+        const blob = await resp.blob();
+        triggerBlobDownload(new Blob([await blob.text()], { type: 'image/svg+xml' }), `qrcode_${ts}.svg`);
+        showToast('success', 'fa-bezier-curve', 'Downloaded as SVG!');
+
+      } else if (fmt === 'pdf') {
+        /* ── PDF: canvas → jsPDF ── */
+        if (!window.jspdf) throw new Error('jsPDF not loaded');
+        const { jsPDF } = window.jspdf;
+        const [w, h]    = currentQRState.size.split('x').map(Number);
+        const img       = await loadImage(buildQRUrlFmt(currentQRState, 'png'));
+        const c         = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const imgData = c.toDataURL('image/jpeg', 0.97);
+        const doc     = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+        const pgW     = doc.internal.pageSize.getWidth();
+        const pgH     = doc.internal.pageSize.getHeight();
+        const margin  = 60;
+        const maxW    = pgW - margin * 2;
+        const maxH    = pgH - margin * 2;
+        const ratio   = Math.min(maxW / w, maxH / h);
+        const iw = w * ratio, ih = h * ratio;
+        const x  = (pgW - iw) / 2;
+        const y  = (pgH - ih) / 2;
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(220, 220, 220);
+        doc.roundedRect(x - 16, y - 16, iw + 32, ih + 32, 8, 8, 'FD');
+        doc.addImage(imgData, 'JPEG', x, y, iw, ih);
+        doc.setFontSize(9);
+        doc.setTextColor(150, 150, 150);
+        const preview = currentQRState.data.length > 60 ? currentQRState.data.slice(0, 60) + '…' : currentQRState.data;
+        doc.text(preview, pgW / 2, y + ih + 32, { align: 'center', maxWidth: iw + 32 });
+        doc.save(`qrcode_${ts}.pdf`);
+        showToast('success', 'fa-file-pdf', 'Downloaded as PDF!');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'fa-circle-exclamation', `Download failed: ${err.message}`);
+    }
+  }
+  const TYPE_META = {
+    text:     { icon: 'fa-font',         label: 'Text'         },
+    url:      { icon: 'fa-link',         label: 'URL'          },
+    wifi:     { icon: 'fa-wifi',         label: 'WiFi'         },
+    phone:    { icon: 'fa-phone',        label: 'Phone'        },
+    email:    { icon: 'fa-envelope',     label: 'Email'        },
+    sms:      { icon: 'fa-message',      label: 'SMS'          },
+    vcard:    { icon: 'fa-address-card', label: 'Contact'      },
+    location: { icon: 'fa-location-dot', label: 'Location'     },
+  };
+  let activeType = 'text';
+
+  function switchType(type) {
+    activeType = type;
+    document.querySelectorAll('.type-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.type === type));
+    document.querySelectorAll('.type-form').forEach(f =>
+      f.classList.toggle('active', f.id === 'form-' + type));
+  }
+
+  /* ─── WiFi string escaping ─── */
+  function wifiEsc(str) {
+    return str.replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/"/g,'\\"');
+  }
+
+  /* ─── Build QR data string per type ─── */
+  function buildQRData() {
+    switch (activeType) {
+      case 'text':
+        return document.getElementById('f-text').value.trim();
+
+      case 'url': {
+        let u = document.getElementById('f-url').value.trim();
+        if (u && !/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) u = 'https://' + u;
+        return u;
+      }
+
+      case 'wifi': {
+        const ssid   = wifiEsc(document.getElementById('f-wifi-ssid').value);
+        const pass   = wifiEsc(document.getElementById('f-wifi-pass').value);
+        const sec    = document.getElementById('f-wifi-sec').value;
+        const hidden = document.getElementById('f-wifi-hidden').checked ? 'true' : 'false';
+        return `WIFI:T:${sec};S:${ssid};P:${pass};H:${hidden};;`;
+      }
+
+      case 'phone': {
+        const ph = document.getElementById('f-phone').value.trim().replace(/\s/g,'');
+        return `tel:${ph}`;
+      }
+
+      case 'email': {
+        const to  = document.getElementById('f-email-to').value.trim();
+        const sub = document.getElementById('f-email-subject').value.trim();
+        const bod = document.getElementById('f-email-body').value.trim();
+        let r = `mailto:${to}`;
+        const p = [];
+        if (sub) p.push('subject=' + encodeURIComponent(sub));
+        if (bod) p.push('body='    + encodeURIComponent(bod));
+        if (p.length) r += '?' + p.join('&');
+        return r;
+      }
+
+      case 'sms': {
+        const ph  = document.getElementById('f-sms-phone').value.trim().replace(/\s/g,'');
+        const msg = document.getElementById('f-sms-msg').value.trim();
+        return `SMSTO:${ph}:${msg}`;
+      }
+
+      case 'vcard': {
+        const first = document.getElementById('f-vc-first').value.trim();
+        const last  = document.getElementById('f-vc-last').value.trim();
+        const ph    = document.getElementById('f-vc-phone').value.trim();
+        const em    = document.getElementById('f-vc-email').value.trim();
+        const org   = document.getElementById('f-vc-org').value.trim();
+        const wu    = document.getElementById('f-vc-url').value.trim();
+        let vc = `BEGIN:VCARD\nVERSION:3.0\nN:${last};${first};;;\nFN:${[first,last].filter(Boolean).join(' ')}`;
+        if (ph)  vc += `\nTEL;TYPE=CELL:${ph}`;
+        if (em)  vc += `\nEMAIL:${em}`;
+        if (org) vc += `\nORG:${org}`;
+        if (wu)  vc += `\nURL:${wu}`;
+        vc += '\nEND:VCARD';
+        return vc;
+      }
+
+      case 'location': {
+        const lat = document.getElementById('f-lat').value.trim();
+        const lng = document.getElementById('f-lng').value.trim();
+        return `geo:${lat},${lng}`;
+      }
+
+      default: return '';
+    }
+  }
+
+  /* ─── QR Generation ─── */
+  function buildQRUrl(data, size, ecc, color) {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=${size}&data=${encodeURIComponent(data)}&ecc=${ecc}&color=${color.replace('#','')}&bgcolor=ffffff&margin=10`;
+  }
+
+  function getTypeFirstInput() {
+    const map = {
+      text:'f-text', url:'f-url', wifi:'f-wifi-ssid', phone:'f-phone',
+      email:'f-email-to', sms:'f-sms-phone', vcard:'f-vc-first', location:'f-lat'
+    };
+    return document.getElementById(map[activeType]);
+  }
+
+  function generateQR() {
+    const data  = buildQRData();
+    const size  = document.getElementById('qrSize').value;
+    const ecc   = document.getElementById('qrEcc').value;
+    const color = document.getElementById('qrColor').value;
+    const meta  = TYPE_META[activeType];
+
+    if (!data || data === 'tel:' || data === 'mailto:' || data === 'geo:,' || data === 'SMSTO::') {
+      showToast('error', 'fa-circle-exclamation', 'Please fill in the required fields!');
+      const fi = getTypeFirstInput();
+      if (fi) fi.focus();
+      return;
+    }
+
+    const url = buildQRUrl(data, size, ecc, color);
+
+    const section = document.getElementById('resultSection');
+    section.classList.remove('show');
+    void section.offsetWidth;
+    section.classList.add('show');
+
+    const frame = document.getElementById('qrFrame');
+    frame.innerHTML = '<div class="qr-spinner"></div>';
+
+    const probe = new Image();
+    probe.onload = () => {
+      frame.innerHTML = `<img src="${url}" alt="QR Code" />`;
+      currentQRState = { data, size, ecc, color };
+      const preview = data.length > 80 ? data.slice(0, 80) + '…' : data;
+      document.getElementById('qrDataText').textContent = preview;
+      document.getElementById('qrMeta').innerHTML =
+        `<span class="qr-tag"><i class="fa-solid ${meta.icon}" style="margin-right:4px"></i>${meta.label}</span>
+         <span class="qr-tag"><i class="fa-solid fa-expand" style="margin-right:4px"></i>${size}</span>
+         <span class="qr-tag"><i class="fa-solid fa-shield-halved" style="margin-right:4px"></i>ECC: ${ecc}</span>
+         <span class="qr-tag"><i class="fa-solid fa-circle" style="color:${color};margin-right:4px"></i>Color</span>`;
+      saveToHistory({ data: preview, rawData: data, url, size, ecc, color, type: activeType, time: new Date().toLocaleString() });
+      showToast('success', 'fa-circle-check', `${meta.label} QR Code generated!`);
+    };
+    probe.onerror = () => {
+      frame.innerHTML = '<p style="color:#ef4444;font-size:12px;text-align:center;padding:8px">Failed to load QR.<br>Check your connection.</p>';
+      showToast('error', 'fa-circle-exclamation', 'Failed to generate QR Code.');
+    };
+    probe.src = url;
+
+    setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }
+
+  /* Enter key on single-line type inputs */
+  ['f-text','f-url','f-phone','f-email-to','f-sms-phone',
+   'f-wifi-ssid','f-wifi-pass','f-vc-first','f-lat','f-lng'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') generateQR(); });
+  });
+
+  /* ─── History ─── */
+  function getHistory() { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+  function setHistory(h) { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }
+
+  let histFilter = 'all';
+
+  function setHistFilter(filter) {
+    if (!isLoggedIn()) { requireLogin('Log in to filter your QR history.'); return; }
+    histFilter = filter;
+    document.querySelectorAll('.hist-filter-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.filter === filter));
+    renderHistory();
+  }
+
+  function formatDate(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d)) return '';
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${day} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  function saveToHistory(item) {
+    if (!isLoggedIn()) {
+      showToast('error', 'fa-user-lock', 'Log in (set your profile) to save QR history.');
+      return;
+    }
+    const h = getHistory();
+    if (h.length && h[0].url === item.url) { renderHistory(); return; }
+    item.createdAt = new Date().toISOString();
+    item.favorite  = false;
+    h.unshift(item);
+    if (h.length > 50) h.pop();
+    setHistory(h);
+    renderHistory();
+  }
+
+  function onHistorySearch() {
+    if (!isLoggedIn()) { requireLogin('Log in to search your QR history.'); return; }
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const grid     = document.getElementById('historyGrid');
+    const controls = document.getElementById('historyControls');
+
+    /* ── Login wall ── */
+    if (!isLoggedIn()) {
+      if (controls) controls.classList.add('history-controls-locked');
+      grid.innerHTML = `
+        <div class="login-wall">
+          <div class="login-wall-icon"><i class="fa-solid fa-user-lock"></i></div>
+          <h4>Profile Required</h4>
+          <p>Set up your profile to save, search,<br>and manage your QR code history.</p>
+          <button class="login-wall-btn" onclick="openModal()">
+            <i class="fa-solid fa-user-pen"></i> Set Up Profile
+          </button>
+        </div>`;
+      return;
+    }
+    if (controls) controls.classList.remove('history-controls-locked');
+
+    const searchEl = document.getElementById('historySearch');
+    const query    = searchEl ? searchEl.value.trim().toLowerCase() : '';
+    const h        = getHistory();
+
+    // Map to {item, idx} then filter
+    let entries = h.map((item, idx) => ({ item, idx }));
+
+    if (histFilter === 'favorites') {
+      entries = entries.filter(({ item }) => item.favorite);
+    }
+    if (query) {
+      entries = entries.filter(({ item }) =>
+        item.data.toLowerCase().includes(query) ||
+        (item.type || '').toLowerCase().includes(query)
+      );
+    }
+
+    if (!entries.length) {
+      const msg = query
+        ? 'No QR codes match your search.'
+        : histFilter === 'favorites'
+          ? 'No favorites yet.<br>Star a QR code to pin it here!'
+          : 'No history yet.<br>Generate your first QR code!';
+      grid.innerHTML = `<div class="empty-history">
+        <i class="fa-solid fa-${histFilter === 'favorites' ? 'star' : 'clock-rotate-left'}"></i>
+        <p>${msg}</p>
+      </div>`;
+      return;
+    }
+
+    grid.innerHTML = entries.map(({ item, idx }) => {
+      const dateStr = formatDate(item.createdAt);
+      const dateLine = dateStr
+        ? `<div class="history-date"><i class="fa-regular fa-calendar"></i>Created: ${dateStr}</div>`
+        : `<div class="history-date"><i class="fa-regular fa-clock"></i>${item.time || ''}</div>`;
+      const favClass = item.favorite ? ' active' : '';
+      const favIcon  = item.favorite ? 'fa-solid fa-star' : 'fa-regular fa-star';
+      const favTitle = item.favorite ? 'Remove from Favorites' : 'Add to Favorites';
+      return `
+      <div class="history-item${item.favorite ? ' favorited' : ''}">
+        <img class="history-qr" src="${item.url}" alt="QR" loading="lazy"/>
+        <div class="history-text" title="${escHtml(item.data)}">${escHtml(item.data)}</div>
+        ${dateLine}
+        <div class="history-actions">
+          <button class="hist-btn hist-view" onclick="viewItem(${idx})"><i class="fa-solid fa-eye"></i> View</button>
+          <button class="hist-btn hist-dl" onclick="downloadHistItem(${idx})" title="Download PNG"><i class="fa-solid fa-download"></i></button>
+          <button class="hist-btn hist-fav${favClass}" onclick="toggleFavorite(${idx})" title="${favTitle}"><i class="${favIcon}"></i></button>
+          <button class="hist-btn hist-del" onclick="deleteItem(${idx})" title="Delete"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function downloadHistItem(idx) {
+    if (!isLoggedIn()) { requireLogin(); return; }
+    const item = getHistory()[idx];
+    if (!item) return;
+    try {
+      showToast('success', 'fa-spinner', 'Preparing download…');
+      const resp = await fetch(item.url);
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = `qrcode_${Date.now()}.png`;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+      showToast('success', 'fa-image', 'Downloaded as PNG!');
+    } catch(e) {
+      showToast('error', 'fa-circle-exclamation', 'Download failed. Try again.');
+    }
+  }
+
+  function toggleFavorite(idx) {
+    if (!isLoggedIn()) { requireLogin('Log in to favorite QR codes.'); return; }
+    const h = getHistory();
+    if (!h[idx]) return;
+    h[idx].favorite = !h[idx].favorite;
+    setHistory(h);
+    renderHistory();
+    showToast('success', h[idx].favorite ? 'fa-star' : 'fa-star',
+      h[idx].favorite ? 'Added to Favorites!' : 'Removed from Favorites.');
+  }
+
+  function viewItem(i) {
+    if (!isLoggedIn()) { requireLogin(); return; }
+    const item = getHistory()[i];
+    if (!item) return;
+
+    const section = document.getElementById('resultSection');
+    section.classList.remove('show'); void section.offsetWidth; section.classList.add('show');
+
+    document.getElementById('qrFrame').innerHTML = `<img src="${item.url}" alt="QR Code" />`;
+    document.getElementById('qrDataText').textContent = item.data;
+
+    const typeMeta = TYPE_META[item.type] || TYPE_META.text;
+    document.getElementById('qrMeta').innerHTML =
+      `<span class="qr-tag"><i class="fa-solid ${typeMeta.icon}" style="margin-right:4px"></i>${typeMeta.label}</span>
+       <span class="qr-tag"><i class="fa-solid fa-expand" style="margin-right:4px"></i>${item.size||'300x300'}</span>
+       <span class="qr-tag"><i class="fa-solid fa-shield-halved" style="margin-right:4px"></i>ECC: ${item.ecc||'M'}</span>`;
+
+    currentQRState = {
+      data:  item.rawData || item.data,
+      size:  item.size  || '300x300',
+      ecc:   item.ecc   || 'M',
+      color: item.color || '#000000'
+    };
+
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showToast('success', 'fa-eye', 'Loaded from history!');
+  }
+
+  function deleteItem(i) {
+    if (!isLoggedIn()) { requireLogin(); return; }
+    const h = getHistory(); h.splice(i, 1); setHistory(h); renderHistory();
+    showToast('success', 'fa-trash', 'Item removed from history.');
+  }
+
+  function clearHistory() {
+    if (!getHistory().length) {
+      showToast('error', 'fa-circle-exclamation', 'No history to clear.');
+      return;
+    }
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+    showToast('success', 'fa-trash', 'All history cleared!');
+  }
+
+  function logout() {
+    localStorage.removeItem(PROFILE_KEY);
+    localStorage.removeItem(HISTORY_KEY);
+    location.reload();
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ─── Share & Copy ─── */
+
+  /* Build QR blob from canvas — avoids CORS/fetch issues when opened from file:// */
+  async function getQRBlob() {
+    if (!currentQRState) throw new Error('No QR code generated yet.');
+    const [w, h] = currentQRState.size.split('x').map(Number);
+    const img    = await loadImage(buildQRUrlFmt(currentQRState, 'png'));
+    const c      = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return new Promise((resolve, reject) => {
+      c.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')), 'image/png');
+    });
+  }
+
+  async function copyQRToClipboard() {
+    if (!currentQRState) {
+      showToast('error', 'fa-circle-exclamation', 'Generate a QR code first!');
+      return;
+    }
+    const btn   = document.getElementById('copyImgBtn');
+    const label = btn ? btn.querySelector('.copy-label') : null;
+    const note  = btn ? btn.querySelector('.copy-note')  : null;
+
+    if (btn) btn.disabled = true;
+
+    const markCopied = (labelText, noteText) => {
+      if (btn)   btn.classList.add('copied');
+      if (label) label.textContent = labelText;
+      if (note)  note.textContent  = noteText;
+      setTimeout(() => {
+        if (btn)   btn.classList.remove('copied');
+        if (label) label.textContent = 'Copy Image to Clipboard';
+        if (note)  note.textContent  = '— no download needed';
+      }, 2600);
+    };
+
+    try {
+      /* ── Method 1: Copy image blob via ClipboardItem (Chrome / Edge) ── */
+      if (navigator.clipboard && window.ClipboardItem) {
+        try {
+          const blob = await getQRBlob();
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          markCopied('Copied to Clipboard!', '✓ ready to paste');
+          showToast('success', 'fa-clipboard-check', 'QR image copied to clipboard!');
+          return;
+        } catch (imgErr) {
+          /* ClipboardItem write failed — try next method */
+          console.warn('Image clipboard write failed:', imgErr.message);
+        }
+      }
+      /* ── Method 2: Copy QR URL as text (Firefox / Safari fallback) ── */
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        const qrUrl = buildQRUrlFmt(currentQRState, 'png');
+        await navigator.clipboard.writeText(qrUrl);
+        markCopied('Link Copied!', '✓ QR image URL copied');
+        showToast('success', 'fa-clipboard-check', 'QR image link copied to clipboard!');
+        return;
+      }
+      /* ── Method 3: Legacy execCommand fallback ── */
+      const qrUrl = buildQRUrlFmt(currentQRState, 'png');
+      const ta = document.createElement('textarea');
+      ta.value = qrUrl;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) {
+        markCopied('Link Copied!', '✓ QR image URL copied');
+        showToast('success', 'fa-clipboard-check', 'QR image link copied!');
+      } else {
+        throw new Error('execCommand copy returned false');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'fa-circle-exclamation', 'Copy failed — try downloading the QR image instead.');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function shareQRNative() {
+    if (!currentQRState) {
+      showToast('error', 'fa-circle-exclamation', 'Generate a QR code first!');
+      return;
+    }
+    const btn = document.querySelector('.share-native');
+    if (btn) btn.classList.add('active');
+    try {
+      const blob = await getQRBlob();
+      const file = new File([blob], 'qrcode.png', { type: 'image/png' });
+
+      /* ── Method 1: Native share with file attachment (mobile + Chrome 89+) ── */
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'QR Code', text: `QR Code: ${currentQRState.data.slice(0, 120)}` });
+        showToast('success', 'fa-share-nodes', 'Shared successfully!');
+        return;
+      }
+      /* ── Method 2: Native share with URL only (no file) ── */
+      if (navigator.share) {
+        await navigator.share({
+          title: 'QR Code',
+          text: `QR Code: ${currentQRState.data.slice(0, 120)}`,
+          url: buildQRUrlFmt(currentQRState, 'png'),
+        });
+        showToast('success', 'fa-share-nodes', 'Shared successfully!');
+        return;
+      }
+      /* ── Method 3: Desktop fallback — download the image ── */
+      triggerBlobDownload(blob, 'qrcode.png');
+      showToast('success', 'fa-arrow-down-to-line', 'Image downloaded — share it from your device!');
+    } catch (err) {
+      if (err.name === 'AbortError') return; /* user dismissed share sheet */
+      console.error(err);
+      /* Last resort: still try to download so the user isn't left empty-handed */
+      try {
+        const b = await getQRBlob();
+        triggerBlobDownload(b, 'qrcode.png');
+        showToast('success', 'fa-arrow-down-to-line', 'Image downloaded — share it from your device!');
+      } catch (_) {
+        showToast('error', 'fa-circle-exclamation', 'Share failed. Try the download buttons above.');
+      }
+    } finally {
+      if (btn) btn.classList.remove('active');
+    }
+  }
+
+  function shareViaWhatsApp() {
+    if (!currentQRState) {
+      showToast('error', 'fa-circle-exclamation', 'Generate a QR code first!');
+      return;
+    }
+    const qrUrl  = buildQRUrlFmt(currentQRState, 'png');
+    const text   = `Here's a QR Code 🔳\n${currentQRState.data.slice(0, 200)}\n\n📷 QR Image: ${qrUrl}`;
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    const btn = document.querySelector('.share-wa');
+    if (btn) { btn.classList.add('active'); setTimeout(() => btn.classList.remove('active'), 1400); }
+    showToast('success', 'fa-brands fa-whatsapp', 'Opening WhatsApp…');
+  }
+
+  function shareViaMessenger() {
+    if (!currentQRState) {
+      showToast('error', 'fa-circle-exclamation', 'Generate a QR code first!');
+      return;
+    }
+    const qrUrl  = buildQRUrlFmt(currentQRState, 'png');
+    const btn    = document.querySelector('.share-msg');
+    if (btn) { btn.classList.add('active'); setTimeout(() => btn.classList.remove('active'), 1400); }
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPad|iPod/i.test(ua)) {
+      /* Try the Messenger app deep-link on mobile */
+      window.location.href = `fb-messenger://share/?link=${encodeURIComponent(qrUrl)}`;
+      setTimeout(() => {
+        window.open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(qrUrl)}&redirect_uri=${encodeURIComponent(window.location.href)}`, '_blank');
+      }, 1500);
+    } else {
+      window.open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(qrUrl)}&redirect_uri=${encodeURIComponent(window.location.href)}`, '_blank');
+    }
+    showToast('success', 'fa-facebook-messenger', 'Opening Messenger…');
+  }
+
+  function shareViaEmail() {
+    if (!currentQRState) {
+      showToast('error', 'fa-circle-exclamation', 'Generate a QR code first!');
+      return;
+    }
+    const qrUrl  = buildQRUrlFmt(currentQRState, 'png');
+    const subject = 'QR Code';
+    const body    = `Here is your QR Code:\n\n${currentQRState.data}\n\n📷 View / Download QR image:\n${qrUrl}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const btn = document.querySelector('.share-email');
+    if (btn) { btn.classList.add('active'); setTimeout(() => btn.classList.remove('active'), 1400); }
+    showToast('success', 'fa-envelope', 'Opening email client…');
+  }
+
+  /* ─── Toast ─── */
+  let toastTimer;
+  function showToast(type, icon, msg) {
+    const t = document.getElementById('toast');
+    document.getElementById('toastIcon').className = `toast-icon fa-solid ${icon}`;
+    document.getElementById('toastMsg').textContent = msg;
+    t.className = `toast ${type} show`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+  }
+
+  /* ─── Theme ─── */
+  const THEME_KEY = 'qrgen_theme';
+
+  function loadTheme() {
+    const saved = JSON.parse(localStorage.getItem(THEME_KEY) || '{"mode":"dark","accent":"purple"}');
+    applyMode(saved.mode || 'dark', false);
+    applyAccent(saved.accent || 'purple', false);
+  }
+
+  function saveTheme() {
+    const mode   = document.documentElement.getAttribute('data-mode')   || 'dark';
+    const accent = document.documentElement.getAttribute('data-accent') || 'purple';
+    localStorage.setItem(THEME_KEY, JSON.stringify({ mode, accent }));
+  }
+
+  function applyMode(mode, save = true) {
+    document.documentElement.setAttribute('data-mode', mode);
+    const icon   = document.getElementById('modeIcon');
+    const sw     = document.getElementById('modeSwitch');
+    if (mode === 'light') {
+      icon.className = 'fa-solid fa-sun';
+      sw.checked = true;
+    } else {
+      icon.className = 'fa-solid fa-moon';
+      sw.checked = false;
+    }
+    if (save) saveTheme();
+  }
+
+  function toggleMode() {
+    const current = document.documentElement.getAttribute('data-mode') || 'dark';
+    applyMode(current === 'dark' ? 'light' : 'dark');
+    showToast('success', current === 'dark' ? 'fa-sun' : 'fa-moon',
+      current === 'dark' ? 'Switched to Light mode' : 'Switched to Dark mode');
+  }
+
+  function applyAccent(accent, save = true) {
+    document.documentElement.setAttribute('data-accent', accent);
+    document.querySelectorAll('.swatch').forEach(s => {
+      s.classList.toggle('active', s.dataset.accent === accent);
+    });
+    if (save) saveTheme();
+  }
+
+  function setAccent(accent) {
+    applyAccent(accent);
+    const labels = { purple:'Purple', blue:'Blue', green:'Green', orange:'Orange', rose:'Rose', teal:'Teal' };
+    showToast('success', 'fa-palette', `Theme: ${labels[accent] || accent}`);
+  }
+
+  function toggleThemePanel() {
+    document.getElementById('themePanel').classList.toggle('open');
+  }
+
+  document.addEventListener('click', e => {
+    const panel = document.getElementById('themePanel');
+    if (!panel) return;
+    if (!panel.closest('.theme-panel-wrap').contains(e.target)) {
+      panel.classList.remove('open');
+    }
+  });
+
+  /* ─── Init ─── */
+  loadTheme();
+  loadProfile();
+  renderHistory();
+
+  /* Re-render history after profile save so the wall lifts immediately */
+  const _origSaveProfile = saveProfile;
+  saveProfile = function() {
+    _origSaveProfile();
+    renderHistory();
+  };
+</script>
+</body>
+</html>
